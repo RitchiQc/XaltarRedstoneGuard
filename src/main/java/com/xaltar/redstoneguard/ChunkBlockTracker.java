@@ -5,8 +5,7 @@ import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 
-import java.util.EnumMap;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -19,9 +18,36 @@ public class ChunkBlockTracker {
     private final XaltarRedstoneGuard plugin;
     // Map: ChunkKey -> (Material -> count)
     private final ConcurrentHashMap<ChunkKey, Map<Material, AtomicInteger>> chunkBlockCounts = new ConcurrentHashMap<>();
+    // Cached limited materials and their limits
+    private volatile Map<Material, Integer> limitMap = new EnumMap<>(Material.class);
 
     public ChunkBlockTracker(XaltarRedstoneGuard plugin) {
         this.plugin = plugin;
+        reloadLimits();
+    }
+
+    /**
+     * Reloads the limit map from config.
+     */
+    public void reloadLimits() {
+        Map<Material, Integer> newLimits = new EnumMap<>(Material.class);
+        if (plugin.getConfig().isConfigurationSection("block-limits")) {
+            for (String key : plugin.getConfig().getConfigurationSection("block-limits").getKeys(false)) {
+                if (key.equals("enabled") || key.equals("message")) {
+                    continue;
+                }
+                Material material = Material.matchMaterial(key);
+                if (material != null) {
+                    int limit = plugin.getConfig().getInt("block-limits." + key, 0);
+                    if (limit > 0) {
+                        newLimits.put(material, limit);
+                    }
+                } else {
+                    plugin.getLogger().warning("Material inconnu dans block-limits: " + key);
+                }
+            }
+        }
+        this.limitMap = newLimits;
     }
 
     /**
@@ -121,23 +147,14 @@ public class ChunkBlockTracker {
      * Returns the configured limit for a material.
      */
     public int getLimit(Material material) {
-        return switch (material) {
-            case CRAFTER -> plugin.getConfig().getInt("block-limits.crafter", 4000);
-            case DISPENSER -> plugin.getConfig().getInt("block-limits.dispenser", 4000);
-            case DROPPER -> plugin.getConfig().getInt("block-limits.dropper", 4000);
-            default -> 0;
-        };
+        return limitMap.getOrDefault(material, 0);
     }
 
     /**
      * Returns all materials that have a configured limit.
      */
     public Material[] getLimitedMaterials() {
-        return new Material[]{
-                Material.CRAFTER,
-                Material.DISPENSER,
-                Material.DROPPER
-        };
+        return limitMap.keySet().toArray(new Material[0]);
     }
 
     /**
@@ -148,6 +165,44 @@ public class ChunkBlockTracker {
         if (counts == null) return 0;
         AtomicInteger counter = counts.get(material);
         return counter != null ? counter.get() : 0;
+    }
+
+    /**
+     * Returns a snapshot of all limits (Material -> limit).
+     */
+    public Map<Material, Integer> getAllLimits() {
+        return new EnumMap<>(limitMap);
+    }
+
+    /**
+     * Returns a snapshot of all counts for a given chunk.
+     */
+    public Map<Material, Integer> getAllCounts(ChunkKey key) {
+        Map<Material, Integer> result = new EnumMap<>(Material.class);
+        Map<Material, AtomicInteger> counts = chunkBlockCounts.get(key);
+        if (counts == null) {
+            // Return zeros for all limited materials
+            for (Material m : getLimitedMaterials()) {
+                result.put(m, 0);
+            }
+            return result;
+        }
+        for (Map.Entry<Material, AtomicInteger> entry : counts.entrySet()) {
+            result.put(entry.getKey(), entry.getValue().get());
+        }
+        return result;
+    }
+
+    /**
+     * Rescans all currently loaded chunks to update counts after a reload.
+     */
+    public void rescanAllLoadedChunks() {
+        chunkBlockCounts.clear();
+        for (org.bukkit.World world : org.bukkit.Bukkit.getWorlds()) {
+            for (Chunk chunk : world.getLoadedChunks()) {
+                scanChunk(chunk);
+            }
+        }
     }
 
     public void shutdown() {

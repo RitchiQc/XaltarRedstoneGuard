@@ -36,6 +36,9 @@ block-limits:
   # Limite maximum de Droppers par chunk
   dropper: 4000
 
+  # Limite maximum de Repeaters par chunk
+  repeater: 1000
+
   # Message affiché au joueur lorsque la limite est atteinte
   # Placeholders: %type% = nom du bloc, %limit% = limite configurée
   # Supporte les couleurs MiniMessage (<red>, <yellow>, <green>, etc.)

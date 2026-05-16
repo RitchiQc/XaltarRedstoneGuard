@@ -101,7 +101,7 @@ public class BlockLimitListener implements Listener {
         blockTracker.removeChunk(key);
     }
 
-    private boolean isLimitedMaterial(Material material) {
+    public boolean isLimitedMaterial(Material material) {
         for (Material m : blockTracker.getLimitedMaterials()) {
             if (m == material) {
                 return true;
@@ -110,11 +110,12 @@ public class BlockLimitListener implements Listener {
         return false;
     }
 
-    private String getDisplayName(Material material) {
+    public String getDisplayName(Material material) {
         return switch (material) {
             case CRAFTER -> "Crafters";
             case DISPENSER -> "Dispensers";
             case DROPPER -> "Droppers";
+            case REPEATER -> "Repeaters";
             default -> material.name().toLowerCase().replace("_", " ");
         };
     }
