@@ -8,6 +8,8 @@ import java.util.concurrent.TimeUnit;
 public class XaltarRedstoneGuard extends JavaPlugin {
 
     private RedstoneLimiter redstoneLimiter;
+    private ChunkBlockTracker blockTracker;
+    private ChunkItemTracker itemTracker;
 
     @Override
     public void onEnable() {
@@ -15,6 +17,12 @@ public class XaltarRedstoneGuard extends JavaPlugin {
 
         this.redstoneLimiter = new RedstoneLimiter(this);
         Bukkit.getPluginManager().registerEvents(redstoneLimiter, this);
+
+        this.blockTracker = new ChunkBlockTracker(this);
+        Bukkit.getPluginManager().registerEvents(new BlockLimitListener(this, blockTracker), this);
+
+        this.itemTracker = new ChunkItemTracker(this);
+        Bukkit.getPluginManager().registerEvents(new ItemLimitListener(this, itemTracker), this);
 
         long cleanupMinutes = getConfig().getLong("cleanup-interval-minutes", 5);
 
@@ -34,6 +42,12 @@ public class XaltarRedstoneGuard extends JavaPlugin {
     public void onDisable() {
         if (redstoneLimiter != null) {
             redstoneLimiter.shutdown();
+        }
+        if (blockTracker != null) {
+            blockTracker.shutdown();
+        }
+        if (itemTracker != null) {
+            itemTracker.shutdown();
         }
         getLogger().info("XaltarRedstoneGuard disabled!");
     }

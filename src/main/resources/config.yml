@@ -19,3 +19,35 @@ break-observer: false
 # Intervalle de nettoyage de la mémoire en minutes
 # Supprime les entrées obsolètes pour éviter les fuites mémoire
 cleanup-interval-minutes: 5
+
+# ============================================================
+# Limitation du nombre de blocs par chunk
+# ============================================================
+block-limits:
+  # Active la limitation des blocs par chunk
+  enabled: true
+
+  # Limite maximum de Crafters par chunk
+  crafter: 4000
+
+  # Limite maximum de Dispensers par chunk
+  dispenser: 4000
+
+  # Limite maximum de Droppers par chunk
+  dropper: 4000
+
+  # Message affiché au joueur lorsque la limite est atteinte
+  # Placeholders: %type% = nom du bloc, %limit% = limite configurée
+  # Supporte les couleurs MiniMessage (<red>, <yellow>, <green>, etc.)
+  message: "<red>Limite de <yellow>%type%</yellow> atteinte dans ce chunk (<yellow>%limit%</yellow> blocs)."
+
+# ============================================================
+# Limitation du nombre d'items au sol par chunk
+# ============================================================
+item-limits:
+  # Active la limitation des items par chunk
+  enabled: true
+
+  # Nombre maximum d'entités items au sol par chunk
+  # Lorsque cette limite est dépassée, l'item le plus ancien est supprimé
+  max-items-per-chunk: 3000
