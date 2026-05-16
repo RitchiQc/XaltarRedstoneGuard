@@ -5,6 +5,11 @@ threshold-ticks: 2
 # Active la limitation des observers qui pulsent trop vite
 limit-observer: true
 
+# Throttle l'observer pour le limiter au tick configuré (plus permissif que cancel)
+# Si activé, l'observer peut pulser exactement tous les "threshold-ticks" ticks.
+# Si désactivé, la logique "cancel-observer" s'applique.
+throttle-observer: false
+
 # Annule le signal redstone si la limite est dépassée (coupe l'output)
 cancel-observer: true
 
