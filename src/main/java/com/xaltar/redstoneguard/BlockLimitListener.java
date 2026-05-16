@@ -102,12 +102,7 @@ public class BlockLimitListener implements Listener {
     }
 
     public boolean isLimitedMaterial(Material material) {
-        for (Material m : blockTracker.getLimitedMaterials()) {
-            if (m == material) {
-                return true;
-            }
-        }
-        return false;
+        return blockTracker.isLimitedMaterial(material);
     }
 
     public String getDisplayName(Material material) {

@@ -23,6 +23,8 @@ public class ChunkItemTracker {
     /**
      * Adds an item to the chunk's queue.
      * If the limit is exceeded, removes and kills the oldest item.
+     * Dead-item cleanup is done lazily only when the queue grows past the limit
+     * to avoid per-spawn overhead.
      */
     public void addItem(ChunkKey key, Item item) {
         if (!plugin.getConfig().getBoolean("item-limits.enabled", true)) {
@@ -37,23 +39,19 @@ public class ChunkItemTracker {
         Deque<Item> queue = chunkItemQueues.computeIfAbsent(key, k -> new ArrayDeque<>());
 
         synchronized (queue) {
-            // Remove dead/invalid items from the queue to keep it clean
-            while (!queue.isEmpty()) {
-                Item oldest = queue.peekFirst();
-                if (oldest == null || !oldest.isValid() || oldest.isDead()) {
-                    queue.pollFirst();
-                } else {
-                    break;
-                }
-            }
-
             queue.addLast(item);
 
-            // If over limit, remove the oldest items
-            while (queue.size() > limit) {
-                Item oldest = queue.pollFirst();
-                if (oldest != null && oldest.isValid() && !oldest.isDead()) {
-                    oldest.remove();
+            // Only clean up when we exceed the limit, not on every spawn
+            if (queue.size() > limit) {
+                // Batch-remove dead/invalid items first
+                queue.removeIf(oldest -> oldest == null || !oldest.isValid() || oldest.isDead());
+
+                // If still over limit after cleanup, remove oldest living items
+                while (queue.size() > limit) {
+                    Item oldest = queue.pollFirst();
+                    if (oldest != null && oldest.isValid() && !oldest.isDead()) {
+                        oldest.remove();
+                    }
                 }
             }
         }

@@ -1,9 +1,9 @@
 package com.xaltar.redstoneguard;
 
 import org.bukkit.Chunk;
+import org.bukkit.ChunkSnapshot;
 import org.bukkit.Material;
 import org.bukkit.World;
-import org.bukkit.block.Block;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -20,6 +20,8 @@ public class ChunkBlockTracker {
     private final ConcurrentHashMap<ChunkKey, Map<Material, AtomicInteger>> chunkBlockCounts = new ConcurrentHashMap<>();
     // Cached limited materials and their limits
     private volatile Map<Material, Integer> limitMap = new EnumMap<>(Material.class);
+    // Fast O(1) lookup set for limited materials
+    private volatile EnumSet<Material> limitedMaterialSet = EnumSet.noneOf(Material.class);
 
     public ChunkBlockTracker(XaltarRedstoneGuard plugin) {
         this.plugin = plugin;
@@ -48,32 +50,43 @@ public class ChunkBlockTracker {
             }
         }
         this.limitMap = newLimits;
+        this.limitedMaterialSet = EnumSet.copyOf(newLimits.keySet());
+    }
+
+    /**
+     * Fast O(1) check if a material is limited.
+     */
+    public boolean isLimitedMaterial(Material material) {
+        return limitedMaterialSet.contains(material);
     }
 
     /**
      * Scans an entire chunk and counts all limited block types.
-     * Should be called from the chunk's regional thread (ChunkLoadEvent).
+     * Uses ChunkSnapshot for much faster read-only access without
+     * creating Block objects or crossing into the server thread.
      */
     public void scanChunk(Chunk chunk) {
         ChunkKey key = ChunkKey.fromChunk(chunk);
-        Map<Material, AtomicInteger> counts = new EnumMap<>(Material.class);
+        Material[] limited = getLimitedMaterials();
+        if (limited.length == 0) {
+            chunkBlockCounts.remove(key);
+            return;
+        }
 
-        for (Material material : getLimitedMaterials()) {
+        Map<Material, AtomicInteger> counts = new EnumMap<>(Material.class);
+        for (Material material : limited) {
             counts.put(material, new AtomicInteger(0));
         }
 
+        ChunkSnapshot snapshot = chunk.getChunkSnapshot();
         World world = chunk.getWorld();
         int minY = world.getMinHeight();
         int maxY = world.getMaxHeight();
 
-        int chunkX = chunk.getX() << 4;
-        int chunkZ = chunk.getZ() << 4;
-
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
                 for (int y = minY; y < maxY; y++) {
-                    Block block = world.getBlockAt(chunkX + x, y, chunkZ + z);
-                    Material type = block.getType();
+                    Material type = snapshot.getBlockType(x, y, z);
                     AtomicInteger counter = counts.get(type);
                     if (counter != null) {
                         counter.incrementAndGet();

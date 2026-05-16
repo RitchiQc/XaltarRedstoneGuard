@@ -14,10 +14,21 @@ import java.util.concurrent.ConcurrentHashMap;
 public class RedstoneLimiter implements Listener {
 
     private final XaltarRedstoneGuard plugin;
-    private final ConcurrentHashMap<String, Long> observerTickLog = new ConcurrentHashMap<>();
+    // Per-world maps to avoid string concatenation in the hot path.
+    // Key: packed block coordinates (x,y,z) as a single long.
+    // Value: last tick timestamp in milliseconds.
+    private final ConcurrentHashMap<String, ConcurrentHashMap<Long, Long>> observerTickLog = new ConcurrentHashMap<>();
 
     public RedstoneLimiter(XaltarRedstoneGuard plugin) {
         this.plugin = plugin;
+    }
+
+    /**
+     * Packs block coordinates into a single long, matching Minecraft's BlockPos format.
+     * This avoids any object allocation for map keys in the hot path.
+     */
+    private static long packKey(int x, int y, int z) {
+        return ((long) (x & 0x3FFFFFF) << 38) | ((long) (z & 0x3FFFFFF) << 12) | (y & 0xFFF);
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -40,17 +51,16 @@ public class RedstoneLimiter implements Listener {
         }
 
         long currentTime = System.currentTimeMillis();
-        String key = block.getWorld().getName() + ":"
-                + block.getX() + ":"
-                + block.getY() + ":"
-                + block.getZ();
+        long posKey = packKey(block.getX(), block.getY(), block.getZ());
+        String worldName = block.getWorld().getName();
 
-        Long lastTime = observerTickLog.get(key);
+        ConcurrentHashMap<Long, Long> worldMap = observerTickLog.computeIfAbsent(worldName, k -> new ConcurrentHashMap<>());
+        Long lastTime = worldMap.get(posKey);
+
         long thresholdTicks = plugin.getConfig().getLong("threshold-ticks", 2);
         long thresholdMs = thresholdTicks * 50L;
 
         boolean throttle = plugin.getConfig().getBoolean("throttle-observer", false);
-        boolean cancel = plugin.getConfig().getBoolean("cancel-observer", true);
 
         if (lastTime != null) {
             long timeDifference = currentTime - lastTime;
@@ -63,14 +73,14 @@ public class RedstoneLimiter implements Listener {
                 handleViolation(event, block);
                 if (!throttle) {
                     // cancel mode: log the current time so the next pulse is evaluated from now
-                    observerTickLog.put(key, currentTime);
+                    worldMap.put(posKey, currentTime);
                 }
                 return;
             }
         }
 
         // Log current time for next check
-        observerTickLog.put(key, currentTime);
+        worldMap.put(posKey, currentTime);
     }
 
     private void handleViolation(BlockRedstoneEvent event, Block block) {
@@ -114,10 +124,15 @@ public class RedstoneLimiter implements Listener {
         long thresholdTicks = plugin.getConfig().getLong("threshold-ticks", 2);
         long maxAgeMs = (thresholdTicks + 100) * 50L; // Allow a small buffer beyond the threshold
 
-        observerTickLog.entrySet().removeIf(entry -> {
-            long lastTime = entry.getValue();
-            return (currentTime - lastTime) > maxAgeMs;
+        observerTickLog.values().forEach(worldMap -> {
+            worldMap.entrySet().removeIf(entry -> {
+                long lastTime = entry.getValue();
+                return (currentTime - lastTime) > maxAgeMs;
+            });
         });
+
+        // Remove empty world maps
+        observerTickLog.entrySet().removeIf(entry -> entry.getValue().isEmpty());
     }
 
     public void shutdown() {
