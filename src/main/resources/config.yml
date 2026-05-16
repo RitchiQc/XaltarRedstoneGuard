@@ -1,0 +1,16 @@
+# Seuil en ticks de jeu (1 redstone tick = 2 game ticks)
+# Si un observer pulse plus vite que ce seuil, il est considéré comme un clock.
+threshold-ticks: 2
+
+# Active la limitation des observers qui pulsent trop vite
+limit-observer: true
+
+# Annule le signal redstone si la limite est dépassée (coupe l'output)
+cancel-observer: true
+
+# Supprime complètement l'observer si la limite est dépassée (sans drop d'item)
+break-observer: false
+
+# Intervalle de nettoyage de la mémoire en minutes
+# Supprime les entrées obsolètes pour éviter les fuites mémoire
+cleanup-interval-minutes: 5

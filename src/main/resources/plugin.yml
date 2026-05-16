@@ -1,0 +1,7 @@
+name: ${project.name}
+version: ${project.version}
+main: com.xaltar.redstoneguard.XaltarRedstoneGuard
+api-version: '1.21'
+folia-supported: true
+author: RitchiQc
+description: ${project.description}
