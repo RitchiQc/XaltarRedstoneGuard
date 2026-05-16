@@ -61,6 +61,10 @@ public class RedstoneLimiter implements Listener {
 
             if (isViolation) {
                 handleViolation(event, block);
+                if (!throttle) {
+                    // cancel mode: log the current time so the next pulse is evaluated from now
+                    observerTickLog.put(key, currentTime);
+                }
                 return;
             }
         }
