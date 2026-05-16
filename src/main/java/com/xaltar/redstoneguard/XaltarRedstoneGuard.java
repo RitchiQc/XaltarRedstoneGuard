@@ -28,7 +28,9 @@ public class XaltarRedstoneGuard extends JavaPlugin {
         this.limitMenu = new LimitMenu(this, blockTracker);
         Bukkit.getPluginManager().registerEvents(limitMenu, this);
 
-        getCommand("xalguard").setExecutor(new XalGuardCommand(this, limitMenu));
+        XalGuardCommand xalGuardCommand = new XalGuardCommand(this, limitMenu);
+        getCommand("xalguard").setExecutor(xalGuardCommand);
+        getCommand("xalguard").setTabCompleter(xalGuardCommand);
 
         long cleanupMinutes = getConfig().getLong("cleanup-interval-minutes", 5);
 

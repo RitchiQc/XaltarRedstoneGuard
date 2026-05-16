@@ -4,10 +4,14 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
-public class XalGuardCommand implements CommandExecutor {
+import java.util.ArrayList;
+import java.util.List;
+
+public class XalGuardCommand implements CommandExecutor, TabCompleter {
 
     private final XaltarRedstoneGuard plugin;
     private final LimitMenu limitMenu;
@@ -64,5 +68,24 @@ public class XalGuardCommand implements CommandExecutor {
 
     private void sendUsage(CommandSender sender) {
         sender.sendMessage(MiniMessage.miniMessage().deserialize("<yellow>Usage: <gray>/xalguard <limit|reload>"));
+    }
+
+    @Override
+    public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
+        List<String> suggestions = new ArrayList<>();
+
+        if (args.length == 1) {
+            if (sender.hasPermission("xalguard.limit")) {
+                suggestions.add("limit");
+            }
+            if (sender.hasPermission("xalguard.reload")) {
+                suggestions.add("reload");
+            }
+
+            String partial = args[0].toLowerCase();
+            suggestions.removeIf(s -> !s.toLowerCase().startsWith(partial));
+        }
+
+        return suggestions;
     }
 }
