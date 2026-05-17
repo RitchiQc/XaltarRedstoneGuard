@@ -93,9 +93,8 @@ public class RedstoneLimiter implements Listener {
             return;
         }
 
-        // Handle any power increase (0->X or X->Y where Y > X)
-        // This catches clocks where the signal doesn't fully drop to 0 between pulses
-        if (event.getNewCurrent() <= event.getOldCurrent()) {
+        // Only handle rising edge (when signal starts / increases from 0)
+        if (event.getNewCurrent() <= 0) {
             return;
         }
 
