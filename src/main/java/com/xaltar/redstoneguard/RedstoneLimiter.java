@@ -43,6 +43,7 @@ public class RedstoneLimiter implements Listener {
                     "OBSERVER",
                     "COMPARATOR",
                     "REPEATER",
+                    "REDSTONE_WIRE",
                     "REDSTONE_TORCH",
                     "REDSTONE_WALL_TORCH",
                     "PISTON",
@@ -92,8 +93,9 @@ public class RedstoneLimiter implements Listener {
             return;
         }
 
-        // Only handle rising edge (when signal starts / increases)
-        if (event.getNewCurrent() <= 0) {
+        // Handle any power increase (0->X or X->Y where Y > X)
+        // This catches clocks where the signal doesn't fully drop to 0 between pulses
+        if (event.getNewCurrent() <= event.getOldCurrent()) {
             return;
         }
 
@@ -108,6 +110,7 @@ public class RedstoneLimiter implements Listener {
         long thresholdMs = thresholdTicks * 50L;
 
         boolean throttle = isThrottleEnabled();
+        boolean debug = plugin.getConfig().getBoolean("debug", false);
 
         if (lastTime != null) {
             long timeDifference = currentTime - lastTime;
@@ -117,6 +120,10 @@ public class RedstoneLimiter implements Listener {
             boolean isViolation = throttle ? (timeDifference < thresholdMs) : (timeDifference <= thresholdMs);
 
             if (isViolation) {
+                if (debug) {
+                    plugin.getLogger().info("[RedstoneGuard] Clock detected at " + block.getX() + "," + block.getY() + "," + block.getZ()
+                            + " (" + material + ") - " + timeDifference + "ms / threshold=" + thresholdMs + "ms");
+                }
                 handleViolation(event, block);
                 if (!throttle) {
                     // cancel mode: log the current time so the next pulse is evaluated from now

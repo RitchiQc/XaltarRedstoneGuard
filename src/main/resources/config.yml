@@ -16,6 +16,7 @@ limited-materials:
   - OBSERVER
   - COMPARATOR
   - REPEATER
+  - REDSTONE_WIRE
   - REDSTONE_TORCH
   - REDSTONE_WALL_TORCH
   - PISTON
@@ -38,6 +39,9 @@ cancel-signal: false
 
 # Supprime complètement le bloc si la limite est dépassée (sans drop d'item)
 break-block: false
+
+# Active les logs de debug dans la console (utile pour tester les clocks)
+debug: false
 
 # Intervalle de nettoyage de la mémoire en minutes
 # Supprime les entrées obsolètes pour éviter les fuites mémoire
