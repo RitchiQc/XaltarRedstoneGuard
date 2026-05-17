@@ -9,6 +9,9 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockRedstoneEvent;
 
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class RedstoneLimiter implements Listener {
@@ -17,10 +20,53 @@ public class RedstoneLimiter implements Listener {
     // Per-world maps to avoid string concatenation in the hot path.
     // Key: packed block coordinates (x,y,z) as a single long.
     // Value: last tick timestamp in milliseconds.
-    private final ConcurrentHashMap<String, ConcurrentHashMap<Long, Long>> observerTickLog = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, ConcurrentHashMap<Long, Long>> tickLog = new ConcurrentHashMap<>();
+
+    // Cache of materials to limit, built from config
+    private volatile Set<Material> limitedMaterials = EnumSet.noneOf(Material.class);
 
     public RedstoneLimiter(XaltarRedstoneGuard plugin) {
         this.plugin = plugin;
+        reloadLimitedMaterials();
+    }
+
+    /**
+     * Reloads the set of limited materials from the plugin configuration.
+     * Call this after config reload.
+     */
+    public void reloadLimitedMaterials() {
+        List<String> materialNames = plugin.getConfig().getStringList("limited-materials");
+
+        // Fallback: if the list is empty, use a sensible default set of redstone components
+        if (materialNames == null || materialNames.isEmpty()) {
+            materialNames = List.of(
+                    "OBSERVER",
+                    "COMPARATOR",
+                    "REPEATER",
+                    "REDSTONE_TORCH",
+                    "REDSTONE_WALL_TORCH",
+                    "PISTON",
+                    "STICKY_PISTON",
+                    "HOPPER",
+                    "DROPPER",
+                    "DISPENSER",
+                    "DAYLIGHT_DETECTOR",
+                    "LECTERN",
+                    "TRIPWIRE_HOOK",
+                    "TARGET"
+            );
+        }
+
+        EnumSet<Material> newSet = EnumSet.noneOf(Material.class);
+        for (String name : materialNames) {
+            try {
+                Material mat = Material.valueOf(name.toUpperCase());
+                newSet.add(mat);
+            } catch (IllegalArgumentException e) {
+                plugin.getLogger().warning("Invalid material in limited-materials config: " + name);
+            }
+        }
+        this.limitedMaterials = newSet;
     }
 
     /**
@@ -33,19 +79,20 @@ public class RedstoneLimiter implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockRedstone(BlockRedstoneEvent event) {
-        // Master switch
-        if (!plugin.getConfig().getBoolean("limit-observer", true)) {
+        // Master switch (supports both new and legacy config keys)
+        if (!isLimitingEnabled()) {
             return;
         }
 
         Block block = event.getBlock();
+        Material material = block.getType();
 
-        // Only handle observers
-        if (block.getType() != Material.OBSERVER) {
+        // Only handle configured materials
+        if (!limitedMaterials.contains(material)) {
             return;
         }
 
-        // Only handle rising edge (when observer starts pulsing)
+        // Only handle rising edge (when signal starts / increases)
         if (event.getNewCurrent() <= 0) {
             return;
         }
@@ -54,13 +101,13 @@ public class RedstoneLimiter implements Listener {
         long posKey = packKey(block.getX(), block.getY(), block.getZ());
         String worldName = block.getWorld().getName();
 
-        ConcurrentHashMap<Long, Long> worldMap = observerTickLog.computeIfAbsent(worldName, k -> new ConcurrentHashMap<>());
+        ConcurrentHashMap<Long, Long> worldMap = tickLog.computeIfAbsent(worldName, k -> new ConcurrentHashMap<>());
         Long lastTime = worldMap.get(posKey);
 
         long thresholdTicks = plugin.getConfig().getLong("threshold-ticks", 2);
         long thresholdMs = thresholdTicks * 50L;
 
-        boolean throttle = plugin.getConfig().getBoolean("throttle-observer", false);
+        boolean throttle = isThrottleEnabled();
 
         if (lastTime != null) {
             long timeDifference = currentTime - lastTime;
@@ -85,34 +132,32 @@ public class RedstoneLimiter implements Listener {
 
     private void handleViolation(BlockRedstoneEvent event, Block block) {
         // Cancel the redstone signal immediately
-        if (plugin.getConfig().getBoolean("cancel-observer", true)
-                || plugin.getConfig().getBoolean("throttle-observer", false)) {
+        if (isCancelEnabled() || isThrottleEnabled()) {
             event.setNewCurrent(0);
-            resetObserver(block);
+            resetBlock(block);
         }
 
-        // Remove the observer block without dropping an item
-        if (plugin.getConfig().getBoolean("break-observer", false)) {
-            if (block.getType() == Material.OBSERVER) {
-                block.setType(Material.AIR);
-            }
+        // Remove the block without dropping an item
+        if (isBreakEnabled()) {
+            block.setType(Material.AIR);
         }
     }
 
     /**
-     * Resets an observer block by re-applying its BlockData, which clears
+     * Resets a block by re-applying its BlockData, which clears
      * its internal pulse state and effectively cancels the current output.
+     * For observers this resets the pulse state.
      * Called synchronously from the event handler (already on the correct regional thread).
      */
-    private void resetObserver(Block block) {
-        if (block.getType() == Material.OBSERVER) {
-            BlockData data = block.getBlockData();
-            if (data instanceof Observer) {
-                // Re-apply the same BlockData to force the server to reset
-                // the observer's internal pulse state without changing orientation
-                block.setBlockData(data, false);
-            }
+    private void resetBlock(Block block) {
+        BlockData data = block.getBlockData();
+        if (data instanceof Observer) {
+            // Re-apply the same BlockData to force the server to reset
+            // the observer's internal pulse state without changing orientation
+            block.setBlockData(data, false);
         }
+        // For other redstone components, setNewCurrent(0) in the event is usually sufficient.
+        // Additional per-type resets can be added here if needed.
     }
 
     /**
@@ -124,7 +169,7 @@ public class RedstoneLimiter implements Listener {
         long thresholdTicks = plugin.getConfig().getLong("threshold-ticks", 2);
         long maxAgeMs = (thresholdTicks + 100) * 50L; // Allow a small buffer beyond the threshold
 
-        observerTickLog.values().forEach(worldMap -> {
+        tickLog.values().forEach(worldMap -> {
             worldMap.entrySet().removeIf(entry -> {
                 long lastTime = entry.getValue();
                 return (currentTime - lastTime) > maxAgeMs;
@@ -132,10 +177,43 @@ public class RedstoneLimiter implements Listener {
         });
 
         // Remove empty world maps
-        observerTickLog.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+        tickLog.entrySet().removeIf(entry -> entry.getValue().isEmpty());
     }
 
     public void shutdown() {
-        observerTickLog.clear();
+        tickLog.clear();
+    }
+
+    // ------------------------------------------------------------------------
+    // Config helpers with backward compatibility
+    // ------------------------------------------------------------------------
+
+    private boolean isLimitingEnabled() {
+        // New key takes precedence, fallback to legacy key
+        if (plugin.getConfig().isSet("limit-redstone")) {
+            return plugin.getConfig().getBoolean("limit-redstone", true);
+        }
+        return plugin.getConfig().getBoolean("limit-observer", true);
+    }
+
+    private boolean isThrottleEnabled() {
+        if (plugin.getConfig().isSet("throttle")) {
+            return plugin.getConfig().getBoolean("throttle", false);
+        }
+        return plugin.getConfig().getBoolean("throttle-observer", false);
+    }
+
+    private boolean isCancelEnabled() {
+        if (plugin.getConfig().isSet("cancel-signal")) {
+            return plugin.getConfig().getBoolean("cancel-signal", false);
+        }
+        return plugin.getConfig().getBoolean("cancel-observer", false);
+    }
+
+    private boolean isBreakEnabled() {
+        if (plugin.getConfig().isSet("break-block")) {
+            return plugin.getConfig().getBoolean("break-block", false);
+        }
+        return plugin.getConfig().getBoolean("break-observer", false);
     }
 }

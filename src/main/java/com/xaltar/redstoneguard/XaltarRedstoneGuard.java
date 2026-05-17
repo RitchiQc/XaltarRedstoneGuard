@@ -63,4 +63,8 @@ public class XaltarRedstoneGuard extends JavaPlugin {
     public ChunkBlockTracker getBlockTracker() {
         return blockTracker;
     }
+
+    public RedstoneLimiter getRedstoneLimiter() {
+        return redstoneLimiter;
+    }
 }

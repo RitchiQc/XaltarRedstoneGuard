@@ -1,20 +1,43 @@
+# ============================================================
+# Limitation des clocks redstone (tous types de blocs)
+# ============================================================
+
 # Seuil en ticks de jeu (1 redstone tick = 2 game ticks)
-# Si un observer pulse plus vite que ce seuil, il est considéré comme un clock.
+# Si un bloc redstone pulse plus vite que ce seuil, il est considéré comme un clock.
 threshold-ticks: 4
 
-# Active la limitation des observers qui pulsent trop vite
-limit-observer: true
+# Active la limitation des clocks redstone (remplace l'ancien limit-observer)
+limit-redstone: true
 
-# Throttle l'observer pour le limiter au tick configuré (plus permissif que cancel)
-# Si activé, l'observer peut pulser exactement tous les "threshold-ticks" ticks.
-# Si désactivé, la logique "cancel-observer" s'applique.
-throttle-observer: true
+# Liste des blocs redstone à surveiller
+# Approche universelle : tous les blocs dans cette liste seront rate-limités.
+# Si la liste est vide, une liste par défaut est utilisée.
+limited-materials:
+  - OBSERVER
+  - COMPARATOR
+  - REPEATER
+  - REDSTONE_TORCH
+  - REDSTONE_WALL_TORCH
+  - PISTON
+  - STICKY_PISTON
+  - HOPPER
+  - DROPPER
+  - DISPENSER
+  - DAYLIGHT_DETECTOR
+  - LECTERN
+  - TRIPWIRE_HOOK
+  - TARGET
+
+# Throttle le bloc pour le limiter au tick configuré (plus permissif que cancel)
+# Si activé, le bloc peut pulser exactement tous les "threshold-ticks" ticks.
+# Si désactivé, la logique "cancel-signal" s'applique.
+throttle: true
 
 # Annule le signal redstone si la limite est dépassée (coupe l'output)
-cancel-observer: false
+cancel-signal: false
 
-# Supprime complètement l'observer si la limite est dépassée (sans drop d'item)
-break-observer: false
+# Supprime complètement le bloc si la limite est dépassée (sans drop d'item)
+break-block: false
 
 # Intervalle de nettoyage de la mémoire en minutes
 # Supprime les entrées obsolètes pour éviter les fuites mémoire
@@ -50,11 +73,11 @@ block-limits:
 
   # Limite maximum de Repeaters par chunk
   repeater: 1000
-  
+
   # Limite maximum de Hopper par chunk
   hopper: 3500
-  
-  # Limite maximum de Hopper par chunk
+
+  # Limite maximum de Comparator par chunk
   comparator: 400
 
   # Message affiché au joueur lorsque la limite est atteinte
