@@ -28,16 +28,22 @@ block-limits:
   enabled: true
 
   # Limite maximum de Crafters par chunk
-  crafter: 4000
+  crafter: 400
 
   # Limite maximum de Dispensers par chunk
-  dispenser: 4000
+  dispenser: 400
 
   # Limite maximum de Droppers par chunk
-  dropper: 4000
+  dropper: 400
 
   # Limite maximum de Repeaters par chunk
   repeater: 1000
+  
+  # Limite maximum de Hopper par chunk
+  hopper: 3500
+  
+  # Limite maximum de Hopper par chunk
+  comparator: 400
 
   # Message affiché au joueur lorsque la limite est atteinte
   # Placeholders: %type% = nom du bloc, %limit% = limite configurée
@@ -51,9 +57,6 @@ item-limits:
   # Active la limitation des items par chunk
   enabled: true
 
-  # Nombre maximum d'ENTITÉS items au sol par chunk
-  # IMPORTANT : cette limite compte les piles (entités), pas la quantité totale d'items.
-  # Exemple : une pile de 64 blocs = 1 entité. Deux shulkers pleines du même item
-  # qui se stackent en 54 piles = 54 entités, pas 3456.
-  # Lorsque cette limite est dépassée, l'entité la plus ancienne est supprimée.
+  # Nombre maximum d'entités items au sol par chunk
+  # Lorsque cette limite est dépassée, l'item le plus ancien est supprimé
   max-items-per-chunk: 3000
