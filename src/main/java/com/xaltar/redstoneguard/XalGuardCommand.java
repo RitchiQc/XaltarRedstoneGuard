@@ -55,24 +55,29 @@ public class XalGuardCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        int cooldownSeconds = plugin.getConfig().getInt("command.limit.cooldown-seconds", 30);
-        UUID playerId = player.getUniqueId();
-        long now = System.currentTimeMillis();
+        String bypassPermission = plugin.getConfig().getString("command.limit.bypass-permission", "xalguard.limit.bypass");
+        boolean hasBypass = sender.hasPermission(bypassPermission);
 
-        if (lastLimitUsage.containsKey(playerId)) {
-            long lastUsed = lastLimitUsage.get(playerId);
-            long elapsedSeconds = (now - lastUsed) / 1000;
+        if (!hasBypass) {
+            int cooldownSeconds = plugin.getConfig().getInt("command.limit.cooldown-seconds", 30);
+            UUID playerId = player.getUniqueId();
+            long now = System.currentTimeMillis();
 
-            if (elapsedSeconds < cooldownSeconds) {
-                long remaining = cooldownSeconds - elapsedSeconds;
-                sender.sendMessage(MiniMessage.miniMessage().deserialize(
-                        "<red>Tu dois attendre <yellow>" + remaining + "</yellow> seconde(s) avant de réutiliser cette commande."
-                ));
-                return;
+            if (lastLimitUsage.containsKey(playerId)) {
+                long lastUsed = lastLimitUsage.get(playerId);
+                long elapsedSeconds = (now - lastUsed) / 1000;
+
+                if (elapsedSeconds < cooldownSeconds) {
+                    long remaining = cooldownSeconds - elapsedSeconds;
+                    sender.sendMessage(MiniMessage.miniMessage().deserialize(
+                            "<red>Tu dois attendre <yellow>" + remaining + "</yellow> seconde(s) avant de réutiliser cette commande."
+                    ));
+                    return;
+                }
             }
-        }
 
-        lastLimitUsage.put(playerId, now);
+            lastLimitUsage.put(playerId, now);
+        }
         limitMenu.open(player);
     }
 
