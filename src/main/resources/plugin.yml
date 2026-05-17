@@ -16,6 +16,9 @@ permissions:
   xalguard.limit:
     description: Permet d'afficher les limites du chunk actuel
     default: true
+  xalguard.limit.bypass:
+    description: Permet de bypass le cooldown de /xalguard limit
+    default: op
   xalguard.reload:
     description: Permet de recharger la configuration du plugin
     default: op

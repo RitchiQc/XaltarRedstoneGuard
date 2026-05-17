@@ -29,6 +29,8 @@ command:
     cooldown-seconds: 30
     # Permission requise pour utiliser /xalguard limit
     permission: "xalguard.limit"
+    # Permission pour bypass le cooldown (généralement pour le staff)
+    bypass-permission: "xalguard.limit.bypass"
 
 # ============================================================
 # Limitation du nombre de blocs par chunk
