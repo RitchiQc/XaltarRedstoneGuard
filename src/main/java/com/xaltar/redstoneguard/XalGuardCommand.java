@@ -9,12 +9,16 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 public class XalGuardCommand implements CommandExecutor, TabCompleter {
 
     private final XaltarRedstoneGuard plugin;
     private final LimitMenu limitMenu;
+    private final Map<UUID, Long> lastLimitUsage = new HashMap<>();
 
     public XalGuardCommand(XaltarRedstoneGuard plugin, LimitMenu limitMenu) {
         this.plugin = plugin;
@@ -40,7 +44,8 @@ public class XalGuardCommand implements CommandExecutor, TabCompleter {
     }
 
     private void handleLimit(CommandSender sender) {
-        if (!sender.hasPermission("xalguard.limit")) {
+        String requiredPermission = plugin.getConfig().getString("command.limit.permission", "xalguard.limit");
+        if (!sender.hasPermission(requiredPermission)) {
             sender.sendMessage(MiniMessage.miniMessage().deserialize("<red>Tu n'as pas la permission d'utiliser cette commande."));
             return;
         }
@@ -50,6 +55,24 @@ public class XalGuardCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
+        int cooldownSeconds = plugin.getConfig().getInt("command.limit.cooldown-seconds", 30);
+        UUID playerId = player.getUniqueId();
+        long now = System.currentTimeMillis();
+
+        if (lastLimitUsage.containsKey(playerId)) {
+            long lastUsed = lastLimitUsage.get(playerId);
+            long elapsedSeconds = (now - lastUsed) / 1000;
+
+            if (elapsedSeconds < cooldownSeconds) {
+                long remaining = cooldownSeconds - elapsedSeconds;
+                sender.sendMessage(MiniMessage.miniMessage().deserialize(
+                        "<red>Tu dois attendre <yellow>" + remaining + "</yellow> seconde(s) avant de réutiliser cette commande."
+                ));
+                return;
+            }
+        }
+
+        lastLimitUsage.put(playerId, now);
         limitMenu.open(player);
     }
 
@@ -75,7 +98,8 @@ public class XalGuardCommand implements CommandExecutor, TabCompleter {
         List<String> suggestions = new ArrayList<>();
 
         if (args.length == 1) {
-            if (sender.hasPermission("xalguard.limit")) {
+            String requiredPermission = plugin.getConfig().getString("command.limit.permission", "xalguard.limit");
+            if (sender.hasPermission(requiredPermission)) {
                 suggestions.add("limit");
             }
             if (sender.hasPermission("xalguard.reload")) {

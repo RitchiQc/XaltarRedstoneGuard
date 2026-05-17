@@ -21,6 +21,16 @@ break-observer: false
 cleanup-interval-minutes: 5
 
 # ============================================================
+# Configuration de la commande /xalguard limit
+# ============================================================
+command:
+  limit:
+    # Délai en secondes entre chaque utilisation de /xalguard limit par joueur
+    cooldown-seconds: 30
+    # Permission requise pour utiliser /xalguard limit
+    permission: "xalguard.limit"
+
+# ============================================================
 # Limitation du nombre de blocs par chunk
 # ============================================================
 block-limits:
