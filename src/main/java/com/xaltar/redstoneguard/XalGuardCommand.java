@@ -90,7 +90,7 @@ public class XalGuardCommand implements CommandExecutor, TabCompleter {
         plugin.reloadConfig();
         plugin.getBlockTracker().reloadLimits();
         plugin.getBlockTracker().rescanAllLoadedChunks();
-        plugin.getRedstoneLimiter().reloadLimitedMaterials();
+        plugin.getRedstoneLimiter().reloadConfig();
 
         sender.sendMessage(MiniMessage.miniMessage().deserialize("<green>Configuration de XaltarRedstoneGuard rechargée avec succès !"));
     }

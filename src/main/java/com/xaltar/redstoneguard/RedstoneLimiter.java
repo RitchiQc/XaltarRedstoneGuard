@@ -17,6 +17,19 @@ import java.util.concurrent.ConcurrentHashMap;
 public class RedstoneLimiter implements Listener {
 
     private final XaltarRedstoneGuard plugin;
+
+    // ------------------------------------------------------------------------
+    // Config cache — all values are loaded once and kept in volatile fields
+    // to avoid expensive Bukkit ConfigurationSection lookups on the hot path.
+    // ------------------------------------------------------------------------
+    private volatile boolean limitingEnabled;
+    private volatile boolean throttleEnabled;
+    private volatile boolean cancelEnabled;
+    private volatile boolean breakEnabled;
+    private volatile boolean debugEnabled;
+    private volatile long thresholdMs;
+    private volatile long cleanupMaxAgeMs;
+
     // Per-world maps to avoid string concatenation in the hot path.
     // Key: packed block coordinates (x,y,z) as a single long.
     // Value: last tick timestamp in milliseconds.
@@ -27,12 +40,55 @@ public class RedstoneLimiter implements Listener {
 
     public RedstoneLimiter(XaltarRedstoneGuard plugin) {
         this.plugin = plugin;
+        reloadConfig();
+    }
+
+    /**
+     * Reloads all configuration values into memory cache.
+     * Call this after config reload.
+     */
+    public void reloadConfig() {
         reloadLimitedMaterials();
+
+        // Master switch (supports both new and legacy config keys)
+        if (plugin.getConfig().isSet("limit-redstone")) {
+            this.limitingEnabled = plugin.getConfig().getBoolean("limit-redstone", true);
+        } else {
+            this.limitingEnabled = plugin.getConfig().getBoolean("limit-observer", true);
+        }
+
+        // Throttle
+        if (plugin.getConfig().isSet("throttle")) {
+            this.throttleEnabled = plugin.getConfig().getBoolean("throttle", false);
+        } else {
+            this.throttleEnabled = plugin.getConfig().getBoolean("throttle-observer", false);
+        }
+
+        // Cancel
+        if (plugin.getConfig().isSet("cancel-signal")) {
+            this.cancelEnabled = plugin.getConfig().getBoolean("cancel-signal", false);
+        } else {
+            this.cancelEnabled = plugin.getConfig().getBoolean("cancel-observer", false);
+        }
+
+        // Break
+        if (plugin.getConfig().isSet("break-block")) {
+            this.breakEnabled = plugin.getConfig().getBoolean("break-block", false);
+        } else {
+            this.breakEnabled = plugin.getConfig().getBoolean("break-observer", false);
+        }
+
+        // Debug
+        this.debugEnabled = plugin.getConfig().getBoolean("debug", false);
+
+        // Pre-calculate threshold in milliseconds (1 tick = 50 ms)
+        long thresholdTicks = plugin.getConfig().getLong("threshold-ticks", 2);
+        this.thresholdMs = thresholdTicks * 50L;
+        this.cleanupMaxAgeMs = this.thresholdMs + 5000L; // 100 ticks buffer
     }
 
     /**
      * Reloads the set of limited materials from the plugin configuration.
-     * Call this after config reload.
      */
     public void reloadLimitedMaterials() {
         List<String> materialNames = plugin.getConfig().getStringList("limited-materials");
@@ -80,8 +136,8 @@ public class RedstoneLimiter implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockRedstone(BlockRedstoneEvent event) {
-        // Master switch (supports both new and legacy config keys)
-        if (!isLimitingEnabled()) {
+        // Master switch — cached volatile read, no config lookup
+        if (!limitingEnabled) {
             return;
         }
 
@@ -105,25 +161,24 @@ public class RedstoneLimiter implements Listener {
         ConcurrentHashMap<Long, Long> worldMap = tickLog.computeIfAbsent(worldName, k -> new ConcurrentHashMap<>());
         Long lastTime = worldMap.get(posKey);
 
-        long thresholdTicks = plugin.getConfig().getLong("threshold-ticks", 2);
-        long thresholdMs = thresholdTicks * 50L;
-
-        boolean throttle = isThrottleEnabled();
-        boolean debug = plugin.getConfig().getBoolean("debug", false);
+        // All config values are cached — zero Bukkit config lookups on the hot path
+        long threshold = thresholdMs;
+        boolean throttle = throttleEnabled;
+        boolean debug = debugEnabled;
 
         if (lastTime != null) {
             long timeDifference = currentTime - lastTime;
 
             // throttle: allow pulses at exactly threshold ticks, block only if faster
             // cancel: block if at or below threshold ticks
-            boolean isViolation = throttle ? (timeDifference < thresholdMs) : (timeDifference <= thresholdMs);
+            boolean isViolation = throttle ? (timeDifference < threshold) : (timeDifference <= threshold);
 
             if (isViolation) {
                 if (debug) {
                     plugin.getLogger().info("[RedstoneGuard] Clock detected at " + block.getX() + "," + block.getY() + "," + block.getZ()
-                            + " (" + material + ") - " + timeDifference + "ms / threshold=" + thresholdMs + "ms");
+                            + " (" + material + ") - " + timeDifference + "ms / threshold=" + threshold + "ms");
                 }
-                handleViolation(event, block);
+                handleViolation(event, block, cancelEnabled, breakEnabled);
                 if (!throttle) {
                     // cancel mode: log the current time so the next pulse is evaluated from now
                     worldMap.put(posKey, currentTime);
@@ -136,15 +191,15 @@ public class RedstoneLimiter implements Listener {
         worldMap.put(posKey, currentTime);
     }
 
-    private void handleViolation(BlockRedstoneEvent event, Block block) {
+    private void handleViolation(BlockRedstoneEvent event, Block block, boolean cancel, boolean breakBlock) {
         // Cancel the redstone signal immediately
-        if (isCancelEnabled() || isThrottleEnabled()) {
+        if (cancel || throttleEnabled) {
             event.setNewCurrent(0);
             resetBlock(block);
         }
 
         // Remove the block without dropping an item
-        if (isBreakEnabled()) {
+        if (breakBlock) {
             block.setType(Material.AIR);
         }
     }
@@ -172,13 +227,12 @@ public class RedstoneLimiter implements Listener {
      */
     public void cleanup() {
         long currentTime = System.currentTimeMillis();
-        long thresholdTicks = plugin.getConfig().getLong("threshold-ticks", 2);
-        long maxAgeMs = (thresholdTicks + 100) * 50L; // Allow a small buffer beyond the threshold
+        long maxAge = cleanupMaxAgeMs;
 
         tickLog.values().forEach(worldMap -> {
             worldMap.entrySet().removeIf(entry -> {
                 long lastTime = entry.getValue();
-                return (currentTime - lastTime) > maxAgeMs;
+                return (currentTime - lastTime) > maxAge;
             });
         });
 
@@ -188,38 +242,5 @@ public class RedstoneLimiter implements Listener {
 
     public void shutdown() {
         tickLog.clear();
-    }
-
-    // ------------------------------------------------------------------------
-    // Config helpers with backward compatibility
-    // ------------------------------------------------------------------------
-
-    private boolean isLimitingEnabled() {
-        // New key takes precedence, fallback to legacy key
-        if (plugin.getConfig().isSet("limit-redstone")) {
-            return plugin.getConfig().getBoolean("limit-redstone", true);
-        }
-        return plugin.getConfig().getBoolean("limit-observer", true);
-    }
-
-    private boolean isThrottleEnabled() {
-        if (plugin.getConfig().isSet("throttle")) {
-            return plugin.getConfig().getBoolean("throttle", false);
-        }
-        return plugin.getConfig().getBoolean("throttle-observer", false);
-    }
-
-    private boolean isCancelEnabled() {
-        if (plugin.getConfig().isSet("cancel-signal")) {
-            return plugin.getConfig().getBoolean("cancel-signal", false);
-        }
-        return plugin.getConfig().getBoolean("cancel-observer", false);
-    }
-
-    private boolean isBreakEnabled() {
-        if (plugin.getConfig().isSet("break-block")) {
-            return plugin.getConfig().getBoolean("break-block", false);
-        }
-        return plugin.getConfig().getBoolean("break-observer", false);
     }
 }
